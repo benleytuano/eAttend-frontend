@@ -11,6 +11,7 @@ import EventDetails from "../pages/Dashboard/EventDetails";
 import eventDetailsLoader from "../pages/Dashboard/Loader/eventDetailsLoader";
 import { updateEventAction } from "../pages/Dashboard/Actions/updateEventAction";
 import { deleteEventAction } from "../pages/Dashboard/Actions/deleteEventAction";
+import { uploadAttendeesAction } from "../pages/Dashboard/Actions/uploadAttendeesAction";
 import Login from "../pages/Login/Login";
 import loginPostAction from "../pages/Login/Actions/postAction";
 import Register from "../pages/Register/Register";
@@ -51,6 +52,10 @@ export const router = createBrowserRouter([
       {
         path: "events/:eventId/delete",
         action: deleteEventAction,
+      },
+      {
+        path: "events/:eventId/upload-attendees",
+        action: uploadAttendeesAction,
       },
     ],
   },

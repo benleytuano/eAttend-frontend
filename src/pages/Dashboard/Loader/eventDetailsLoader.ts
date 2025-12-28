@@ -18,8 +18,16 @@ export default async function eventDetailsLoader({
   }
 
   try {
-    const response = await axiosInstance.get(`/events/${eventId}`);
-    return response.data;
+    // Fetch both event details and attendees in parallel
+    const [eventResponse, attendeesResponse] = await Promise.all([
+      axiosInstance.get(`/events/${eventId}`),
+      axiosInstance.get(`/attendees/${eventId}`),
+    ]);
+
+    return {
+      event: eventResponse.data,
+      attendees: attendeesResponse.data,
+    };
   } catch (error: any) {
     // Handle token expiration
     if (error.response?.status === 401 || error.response?.status === 403) {
@@ -27,7 +35,7 @@ export default async function eventDetailsLoader({
       return redirect("/");
     }
 
-    console.error("Failed to fetch event:", error);
-    throw new Error(error.response?.data?.message || "Failed to fetch event");
+    console.error("Failed to fetch event data:", error);
+    throw new Error(error.response?.data?.message || "Failed to fetch event data");
   }
 }

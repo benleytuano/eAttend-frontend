@@ -8,7 +8,7 @@ import {
   useParams,
   useSubmit,
 } from "react-router";
-import { Calendar, X, Download, QrCode, Pencil, Trash2 } from "lucide-react";
+import { Calendar, X, Download, QrCode, Pencil, Trash2, Upload } from "lucide-react";
 import { Toast } from "../../components/Toast";
 import { Loader } from "../../components/Loader";
 
@@ -21,33 +21,70 @@ export default function EventDetails() {
   const [selectedDate, setSelectedDate] = useState("Mar 15");
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
   const [toast, setToast] = useState<{
     message: string;
     type: "success" | "error";
   } | null>(null);
+
+  const itemsPerPage = 5;
 
   const actionData = useActionData() as
     | { success?: boolean; error?: string; message?: string }
     | undefined;
 
   const loaderData = useLoaderData() as {
-    data: {
-      id: number;
-      event_name: string;
-      event_start_date: string;
-      event_end_date: string;
-      created_at: string;
+    event: {
+      data: {
+        id: number;
+        event_name: string;
+        event_start_date: string;
+        event_end_date: string;
+        created_at: string;
+      };
+    };
+    attendees: {
+      data: {
+        count: number;
+        attendees: Array<{
+          id: number;
+          event_id: number;
+          employee_id: string;
+          name: string;
+          section: string;
+          position: string;
+          employment_status: string;
+          created_at: string;
+        }>;
+      };
     };
   };
 
-  const event = loaderData?.data;
+  const event = loaderData?.event?.data;
+  const attendeesData = loaderData?.attendees?.data?.attendees || [];
+  const attendeesCount = loaderData?.attendees?.data?.count || 0;
+
+  // Pagination logic
+  const totalPages = Math.ceil(attendeesData.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const currentAttendees = attendeesData.slice(startIndex, endIndex);
+
+  // Reset to page 1 when attendees data changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [attendeesData.length]);
 
   // Handle action data (success/error)
   useEffect(() => {
     if (actionData?.success) {
       setShowEditModal(false);
+      setShowUploadModal(false);
+      setSelectedFile(null);
       setToast({
-        message: actionData.message || "Event updated successfully!",
+        message: actionData.message || "Operation completed successfully!",
         type: "success",
       });
     } else if (actionData?.error) {
@@ -73,30 +110,6 @@ export default function EventDetails() {
       : "N/A",
   };
 
-  const attendeesData = [
-    {
-      id: "03-001",
-      name: "Santos Juan M",
-      section: "Human Resource Welfare Section",
-      position: "Administrative Officer II",
-      status: "Permanent",
-    },
-    {
-      id: "03-002",
-      name: "Maria Santos",
-      section: "Finance Department",
-      position: "Budget Officer",
-      status: "Permanent",
-    },
-    {
-      id: "03-003",
-      name: "John Smith",
-      section: "IT Services",
-      position: "System Administrator",
-      status: "Contractual",
-    },
-  ];
-
   const attendanceDates = ["Mar 15", "Mar 16", "Mar 17", "Mar 18"];
 
   const attendanceData = [
@@ -111,201 +124,282 @@ export default function EventDetails() {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {/* Event Header */}
-      <div className="bg-gray-100 rounded-lg p-6">
-        <div className="flex justify-between items-start">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">
-              {selectedEvent.title}
-            </h2>
-            <div className="flex items-center gap-2 text-sm text-gray-600 mt-2">
-              <Calendar size={16} /> {selectedEvent.date}
-            </div>
+      <div className="flex items-start justify-between border-b border-gray-200 pb-4">
+        <div>
+          <h1 className="text-lg font-semibold text-gray-900">
+            {selectedEvent.title}
+          </h1>
+          <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-1">
+            <Calendar size={14} />
+            <span>{selectedEvent.date}</span>
           </div>
-          <button
-            onClick={() => navigate("/dashboard")}
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <X size={20} />
-          </button>
         </div>
-
-        {/* Action Buttons */}
-        <div className="flex gap-2 mt-6">
+        <div className="flex items-center gap-2">
           <button
             onClick={() => alert("QR Code generation coming soon!")}
-            className="border border-gray-400 p-2 rounded hover:bg-white transition text-gray-700 hover:text-gray-900 relative group"
+            className="inline-flex items-center justify-center w-8 h-8 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+            title="Generate QR Code"
           >
-            <QrCode size={20} />
-            <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap pointer-events-none">
-              Generate QR Code
-            </span>
+            <QrCode size={16} />
           </button>
           <button
             onClick={() => setShowEditModal(true)}
-            className="border border-gray-400 p-2 rounded hover:bg-white transition text-gray-700 hover:text-gray-900 relative group"
+            className="inline-flex items-center justify-center w-8 h-8 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+            title="Edit Event"
           >
-            <Pencil size={20} />
-            <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap pointer-events-none">
-              Edit Event
-            </span>
+            <Pencil size={16} />
           </button>
           <button
             onClick={() => setShowDeleteConfirm(true)}
-            className="border border-gray-400 p-2 rounded hover:bg-white transition text-red-600 hover:text-red-700 relative group"
+            className="inline-flex items-center justify-center w-8 h-8 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors"
+            title="Delete Event"
           >
-            <Trash2 size={20} />
-            <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap pointer-events-none">
-              Delete Event
-            </span>
+            <Trash2 size={16} />
+          </button>
+          <button
+            onClick={() => navigate("/dashboard")}
+            className="inline-flex items-center justify-center w-8 h-8 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition-colors ml-2"
+          >
+            <X size={16} />
           </button>
         </div>
+      </div>
 
-        {/* Tabs */}
-        <div className="flex gap-6 border-b mt-6 pt-4">
-          {["attendees", "attendance"].map((t) => (
-            <button
-              key={t}
-              onClick={() => setEventTab(t)}
-              className={`pb-3 text-sm font-medium ${
-                eventTab === t
-                  ? "border-b-2 border-gray-900 text-gray-900"
-                  : "text-gray-500"
-              }`}
-            >
-              {t[0].toUpperCase() + t.slice(1)}
-            </button>
-          ))}
-        </div>
+      {/* Tabs */}
+      <div className="flex gap-6 border-b border-gray-200">
+        {["attendees", "attendance"].map((t) => (
+          <button
+            key={t}
+            onClick={() => setEventTab(t)}
+            className={`pb-2 text-xs font-medium transition-colors ${
+              eventTab === t
+                ? "border-b-2 border-gray-900 text-gray-900"
+                : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {t[0].toUpperCase() + t.slice(1)}
+          </button>
+        ))}
       </div>
 
       {/* ATTENDEES TAB */}
       {eventTab === "attendees" && (
-        <div className="bg-white rounded-lg p-6">
-          <div className="flex justify-between items-center mb-6">
-            <p className="text-sm"></p>
-            <button className="bg-teal-700 text-white px-4 py-2 rounded text-sm font-medium hover:bg-teal-800 transition">
-              + Add Attendee
+        <div className="space-y-4">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="text-xs text-gray-500">
+              {attendeesCount} {attendeesCount === 1 ? "person" : "people"}
+            </div>
+            <button
+              onClick={() => setShowUploadModal(true)}
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+            >
+              <Upload size={14} />
+              <span className="hidden sm:inline">Upload CSV/Excel</span>
+              <span className="sm:hidden">Upload</span>
             </button>
           </div>
 
-          <div className="overflow-x-auto border rounded">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
-                    ID
-                  </th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
-                    NAME
-                  </th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
-                    SECTION
-                  </th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
-                    POSITION
-                  </th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
-                    EMPLOYMENT STATUS
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {attendeesData.map((attendee, idx) => (
-                  <tr
-                    key={idx}
-                    className="border-b hover:bg-gray-50 transition"
+          {/* Table */}
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="overflow-x-auto -mx-4 sm:mx-0">
+              <div className="inline-block min-w-full align-middle">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead>
+                    <tr className="bg-gray-50/50">
+                      <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap">
+                        Employee ID
+                      </th>
+                      <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap">
+                        Name
+                      </th>
+                      <th className="hidden md:table-cell px-3 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap">
+                        Section
+                      </th>
+                      <th className="hidden lg:table-cell px-3 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap">
+                        Position
+                      </th>
+                      <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap">
+                        Status
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-100">
+                    {currentAttendees.length > 0 ? (
+                      currentAttendees.map((attendee, idx) => (
+                        <tr
+                          key={attendee.id}
+                          className={`hover:bg-gray-50/50 transition-colors ${
+                            idx % 2 === 0 ? "" : "bg-gray-50/30"
+                          }`}
+                        >
+                          <td className="px-3 py-2.5 text-xs text-gray-900 font-medium whitespace-nowrap">
+                            {attendee.employee_id}
+                          </td>
+                          <td className="px-3 py-2.5 text-xs text-gray-900 max-w-[150px] sm:max-w-none truncate sm:whitespace-normal">
+                            {attendee.name}
+                          </td>
+                          <td className="hidden md:table-cell px-3 py-2.5 text-xs text-gray-600 max-w-[200px] truncate">
+                            {attendee.section}
+                          </td>
+                          <td className="hidden lg:table-cell px-3 py-2.5 text-xs text-gray-600 max-w-[180px] truncate">
+                            {attendee.position}
+                          </td>
+                          <td className="px-3 py-2.5 text-xs">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-gray-700 whitespace-nowrap">
+                              {attendee.employment_status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={5} className="px-3 py-12 text-center">
+                          <div className="flex flex-col items-center gap-2">
+                            <p className="text-sm text-gray-500">No attendees yet</p>
+                            <button
+                              onClick={() => setShowUploadModal(true)}
+                              className="text-xs text-gray-600 hover:text-gray-900 underline"
+                            >
+                              Upload a CSV/Excel file to get started
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-3 py-2.5 bg-gray-50/50 border-t border-gray-200">
+                <div className="text-xs text-gray-600">
+                  Showing {startIndex + 1} to {Math.min(endIndex, attendeesCount)} of {attendeesCount}
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="px-2 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
-                    <td className="px-4 py-4 text-gray-900">{attendee.id}</td>
-                    <td className="px-4 py-4 text-gray-900">{attendee.name}</td>
-                    <td className="px-4 py-4 text-gray-700">
-                      {attendee.section}
-                    </td>
-                    <td className="px-4 py-4 text-gray-700">
-                      {attendee.position}
-                    </td>
-                    <td className="px-4 py-4 text-gray-700">
-                      {attendee.status}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    <span className="hidden sm:inline">Previous</span>
+                    <span className="sm:hidden">Prev</span>
+                  </button>
+                  <div className="flex items-center gap-0.5 mx-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page)}
+                        className={`min-w-[28px] px-2 py-1 text-xs font-medium rounded transition-colors ${
+                          currentPage === page
+                            ? "bg-gray-900 text-white"
+                            : "text-gray-700 hover:bg-gray-100"
+                        }`}
+                      >
+                        {page}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-2 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
 
       {/* ATTENDANCE TAB */}
       {eventTab === "attendance" && (
-        <div className="bg-white rounded-lg p-6">
-          <div className="flex justify-between items-center mb-6">
-            <p className="text-sm"></p>
-            <button className="bg-gray-900 text-white px-4 py-2 rounded text-sm font-medium hover:bg-gray-800 transition flex items-center gap-2">
-              <Download size={16} /> Download Report
+        <div className="space-y-4">
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex gap-1.5 flex-wrap">
+              {attendanceDates.map((date) => (
+                <button
+                  key={date}
+                  onClick={() => setSelectedDate(date)}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    selectedDate === date
+                      ? "bg-gray-900 text-white"
+                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  }`}
+                >
+                  {date}
+                </button>
+              ))}
+            </div>
+            <button className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gray-900 rounded-md hover:bg-gray-800 transition-colors w-full sm:w-auto">
+              <Download size={14} />
+              <span className="hidden sm:inline">Download Report</span>
+              <span className="sm:hidden">Download</span>
             </button>
           </div>
 
-          {/* Date Selector */}
-          <div className="flex gap-2 mb-6 flex-wrap">
-            {attendanceDates.map((date) => (
-              <button
-                key={date}
-                onClick={() => setSelectedDate(date)}
-                className={`px-4 py-2 rounded text-sm font-medium transition ${
-                  selectedDate === date
-                    ? "bg-teal-700 text-white"
-                    : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                }`}
-              >
-                {date}
-              </button>
-            ))}
-          </div>
-
           {/* Attendance Table */}
-          <div className="overflow-x-auto border rounded">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b">
-                <tr>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
-                    ID
-                  </th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
-                    NAME
-                  </th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
-                    SECTION
-                  </th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
-                    POSITION
-                  </th>
-                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
-                    EMPLOYMENT STATUS
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {attendanceData.map((attendee, idx) => (
-                  <tr
-                    key={idx}
-                    className="border-b hover:bg-gray-50 transition"
-                  >
-                    <td className="px-4 py-4 text-gray-900">{attendee.id}</td>
-                    <td className="px-4 py-4 text-gray-900">{attendee.name}</td>
-                    <td className="px-4 py-4 text-gray-700">
-                      {attendee.section}
-                    </td>
-                    <td className="px-4 py-4 text-gray-700">
-                      {attendee.position}
-                    </td>
-                    <td className="px-4 py-4 text-gray-700">
-                      {attendee.status}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="overflow-x-auto -mx-4 sm:mx-0">
+              <div className="inline-block min-w-full align-middle">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead>
+                    <tr className="bg-gray-50/50">
+                      <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap">
+                        Employee ID
+                      </th>
+                      <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap">
+                        Name
+                      </th>
+                      <th className="hidden md:table-cell px-3 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap">
+                        Section
+                      </th>
+                      <th className="hidden lg:table-cell px-3 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap">
+                        Position
+                      </th>
+                      <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap">
+                        Status
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-100">
+                    {attendanceData.map((attendee, idx) => (
+                      <tr
+                        key={idx}
+                        className={`hover:bg-gray-50/50 transition-colors ${
+                          idx % 2 === 0 ? "" : "bg-gray-50/30"
+                        }`}
+                      >
+                        <td className="px-3 py-2.5 text-xs text-gray-900 font-medium whitespace-nowrap">
+                          {attendee.id}
+                        </td>
+                        <td className="px-3 py-2.5 text-xs text-gray-900 max-w-[150px] sm:max-w-none truncate sm:whitespace-normal">
+                          {attendee.name}
+                        </td>
+                        <td className="hidden md:table-cell px-3 py-2.5 text-xs text-gray-600 max-w-[200px] truncate">
+                          {attendee.section}
+                        </td>
+                        <td className="hidden lg:table-cell px-3 py-2.5 text-xs text-gray-600 max-w-[180px] truncate">
+                          {attendee.position}
+                        </td>
+                        <td className="px-3 py-2.5 text-xs">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-gray-700 whitespace-nowrap">
+                            {attendee.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -445,6 +539,89 @@ export default function EventDetails() {
                 Delete
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* UPLOAD ATTENDEES MODAL */}
+      {showUploadModal && (
+        <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-xl w-96">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold">Upload Attendees</h2>
+              <button
+                onClick={() => {
+                  setShowUploadModal(false);
+                  setSelectedFile(null);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <Form
+              method="post"
+              action={`/dashboard/events/${eventId}/upload-attendees`}
+              encType="multipart/form-data"
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Select CSV or Excel File
+                </label>
+                <input
+                  type="file"
+                  name="file"
+                  accept=".csv,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                  className="w-full border border-gray-300 p-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-teal-600"
+                  required
+                />
+                {selectedFile && (
+                  <p className="mt-2 text-xs text-gray-600">
+                    Selected: {selectedFile.name} ({(selectedFile.size / 1024).toFixed(2)} KB)
+                  </p>
+                )}
+              </div>
+
+              <div className="bg-blue-50 border border-blue-200 rounded p-3">
+                <p className="text-xs text-gray-700">
+                  <strong>Note:</strong> Supported file formats: CSV (.csv), Excel (.xls, .xlsx)
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowUploadModal(false);
+                    setSelectedFile(null);
+                  }}
+                  className="px-4 py-2 bg-gray-200 rounded text-sm font-medium hover:bg-gray-300"
+                  disabled={navigation.state === "submitting"}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={navigation.state === "submitting" || !selectedFile}
+                  className="px-4 py-2 bg-teal-700 text-white rounded text-sm font-medium hover:bg-teal-800 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {navigation.state === "submitting" ? (
+                    <>
+                      <Loader size="sm" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Upload size={16} />
+                      Upload
+                    </>
+                  )}
+                </button>
+              </div>
+            </Form>
           </div>
         </div>
       )}
