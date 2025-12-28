@@ -1,36 +1,68 @@
 import { useState } from "react";
-import { useNavigate } from "react-router";
+import { useLoaderData, useNavigate } from "react-router";
 import { Calendar, Eye } from "lucide-react";
 
 export default function AllEvents() {
   const navigate = useNavigate();
   const [tab, setTab] = useState("ongoing");
   const [showAddModal, setShowAddModal] = useState(false);
+  const loaderData = useLoaderData() as {
+    data: { events: any[]; count: number };
+  };
 
-  // Dummy Data
-  const ongoing = [
-    { id: 1, title: "Product Launch Webinar", date: "Feb 28, 2024" },
-    { id: 2, title: "Developer Workshop Series", date: "Dec 15, 2024" },
-    { id: 3, title: "Marketing Campaign Launch", date: "Dec 10, 2024" },
-    { id: 4, title: "Sales Rally 2024", date: "Mar 1, 2024" },
-    { id: 5, title: "Brand Awareness Week", date: "Apr 12, 2024" },
-  ];
+  // Get events from loader data
+  const events = loaderData?.data?.events || [];
 
-  const upcoming = [
-    { id: 1, title: "UX Design Bootcamp", date: "May 10, 2024" },
-    { id: 2, title: "Mobile Mastery Training", date: "Jun 5, 2024" },
-    { id: 3, title: "Leadership Advance Class", date: "Jul 8, 2024" },
-    { id: 4, title: "Marketing Webinar", date: "Aug 2, 2024" },
-    { id: 5, title: "Project Vision Summit", date: "Sept 12, 2024" },
-  ];
+  // Filter events by status based on dates
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
-  const completed = [
-    { id: 1, title: "Annual Awards Night", date: "Dec 20, 2024" },
-    { id: 2, title: "Q4 Team Building", date: "Oct 5, 2024" },
-    { id: 3, title: "Cybersecurity Seminar", date: "Sept 12, 2024" },
-    { id: 4, title: "Project Closure Meetup", date: "Aug 19, 2024" },
-    { id: 5, title: "Marketing Debrief 2024", date: "Jul 10, 2024" },
-  ];
+  const categorizeEvent = (event: any) => {
+    const startDate = new Date(event.event_start_date);
+    const endDate = new Date(event.event_end_date);
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(0, 0, 0, 0);
+
+    if (endDate < today) return "completed";
+    if (startDate > today) return "upcoming";
+    return "ongoing";
+  };
+
+  const ongoing = events
+    .filter((e) => categorizeEvent(e) === "ongoing")
+    .map((e) => ({
+      id: e.id,
+      title: e.event_name,
+      date: new Date(e.event_start_date).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }),
+    }));
+
+  const upcoming = events
+    .filter((e) => categorizeEvent(e) === "upcoming")
+    .map((e) => ({
+      id: e.id,
+      title: e.event_name,
+      date: new Date(e.event_start_date).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }),
+    }));
+
+  const completed = events
+    .filter((e) => categorizeEvent(e) === "completed")
+    .map((e) => ({
+      id: e.id,
+      title: e.event_name,
+      date: new Date(e.event_start_date).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }),
+    }));
 
   const getEvents = () => {
     if (tab === "ongoing") return ongoing;
@@ -75,10 +107,9 @@ export default function AllEvents() {
           ))}
         </div>
 
-        <div className="mt-4 max-h-[500px] overflow-y-auto">
-          {getEvents()
-            .slice(0, 10)
-            .map((e) => (
+        <div className="mt-4 max-h-[585px] overflow-y-auto">
+          {getEvents().length > 0 ? (
+            getEvents().map((e) => (
               <div
                 key={e.id}
                 className="py-3 flex justify-between border-b border-gray-200 group last:border-b-0"
@@ -87,7 +118,6 @@ export default function AllEvents() {
                   <p className="text-sm font-medium text-gray-900">{e.title}</p>
                   <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
                     <Calendar size={12} /> {e.date}
-                    <span className="text-teal-600 font-medium">ongoing</span>
                   </div>
                 </div>
                 <Eye
@@ -96,7 +126,12 @@ export default function AllEvents() {
                   onClick={() => navigate(`/dashboard/events/${e.id}`)}
                 />
               </div>
-            ))}
+            ))
+          ) : (
+            <div className="py-12 text-center text-gray-500">
+              <p className="text-sm">No {tab} events</p>
+            </div>
+          )}
         </div>
       </div>
 

@@ -1,7 +1,7 @@
 import { redirect } from "react-router";
 import axiosInstance from "../../../services/api";
 
-export default async function dashboardLoader() {
+export default async function allEventsLoader() {
   const token = sessionStorage.getItem("authToken");
 
   if (!token) {

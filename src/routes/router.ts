@@ -6,7 +6,11 @@ import Dashboard from "../pages/Dashboard/Dashboard";
 import dashboardLoader from "../pages/Dashboard/Loader/dashboardLoader";
 import { addEventAction } from "../pages/Dashboard/Actions/addEventAction";
 import AllEvents from "../pages/Dashboard/AllEvents";
+import allEventsLoader from "../pages/Dashboard/Loader/allEventsLoader";
 import EventDetails from "../pages/Dashboard/EventDetails";
+import eventDetailsLoader from "../pages/Dashboard/Loader/eventDetailsLoader";
+import { updateEventAction } from "../pages/Dashboard/Actions/updateEventAction";
+import { deleteEventAction } from "../pages/Dashboard/Actions/deleteEventAction";
 import Login from "../pages/Login/Login";
 import loginPostAction from "../pages/Login/Actions/postAction";
 import Register from "../pages/Register/Register";
@@ -36,10 +40,17 @@ export const router = createBrowserRouter([
       {
         path: "all-events",
         Component: AllEvents,
+        loader: allEventsLoader,
       },
       {
         path: "events/:eventId",
         Component: EventDetails,
+        loader: eventDetailsLoader,
+        action: updateEventAction,
+      },
+      {
+        path: "events/:eventId/delete",
+        action: deleteEventAction,
       },
     ],
   },

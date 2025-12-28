@@ -1,49 +1,119 @@
 import { useEffect, useState } from "react";
-import { Form, useActionData, useNavigate } from "react-router";
+import {
+  Form,
+  useActionData,
+  useLoaderData,
+  useNavigate,
+  useNavigation,
+} from "react-router";
 import { Calendar, Eye, X } from "lucide-react";
+import { Toast } from "../../components/Toast";
+import { Loader } from "../../components/Loader";
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const navigation = useNavigation();
   const [tab, setTab] = useState("ongoing");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [toast, setToast] = useState<{
+    message: string;
+    type: "success" | "error";
+  } | null>(null);
+
+  const loaderData = useLoaderData() as {
+    data: { events: any[]; count: number };
+  };
   const actionData = useActionData() as
-    | { success?: boolean; error?: string; errors?: any[] }
+    | { success?: boolean; error?: string; errors?: any[]; message?: string }
     | undefined;
 
-  // Close modal on success
+  // Close modal on success and show toast
   useEffect(() => {
     if (actionData?.success) {
       setShowAddModal(false);
+      setToast({
+        message: actionData.message || "Event created successfully!",
+        type: "success",
+      });
+    } else if (actionData?.error) {
+      setToast({
+        message: actionData.error,
+        type: "error",
+      });
     }
   }, [actionData]);
 
-  // Dummy Data
-  const recently = [
-    { id: 1, title: "Annual Tech Conference 2024", date: "Mar 15, 2024" },
-    { id: 2, title: "Product Launch Webinar", date: "Feb 28, 2024" },
-    { id: 3, title: "Team Building Workshop", date: "Apr 20, 2024" },
-  ];
+  // Get events from loader data
+  const events = loaderData?.data?.events || [];
 
-  const ongoing = [
-    { id: 1, title: "Product Launch Webinar", date: "Feb 28, 2024" },
-    { id: 2, title: "Developer Workshop Series", date: "Dec 15, 2024" },
-    { id: 3, title: "Marketing Campaign Launch", date: "Dec 10, 2024" },
-    { id: 4, title: "Sales Rally 2024", date: "Mar 1, 2024" },
-  ];
+  // Get recently added events (latest 6)
+  const recently = events
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    )
+    .slice(0, 6)
+    .map((e) => ({
+      id: e.id,
+      title: e.event_name,
+      date: new Date(e.event_start_date).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }),
+    }));
 
-  const upcoming = [
-    { id: 1, title: "UX Design Bootcamp", date: "May 10, 2024" },
-    { id: 2, title: "Mobile Mastery Training", date: "Jun 5, 2024" },
-    { id: 3, title: "Leadership Advance Class", date: "Jul 8, 2024" },
-    { id: 4, title: "Marketing Webinar", date: "Aug 2, 2024" },
-  ];
+  // Filter events by status based on dates
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
-  const completed = [
-    { id: 1, title: "Annual Awards Night", date: "Dec 20, 2024" },
-    { id: 2, title: "Q4 Team Building", date: "Oct 5, 2024" },
-    { id: 3, title: "Cybersecurity Seminar", date: "Sept 12, 2024" },
-    { id: 4, title: "Project Closure Meetup", date: "Aug 19, 2024" },
-  ];
+  const categorizeEvent = (event: any) => {
+    const startDate = new Date(event.event_start_date);
+    const endDate = new Date(event.event_end_date);
+    startDate.setHours(0, 0, 0, 0);
+    endDate.setHours(0, 0, 0, 0);
+
+    if (endDate < today) return "completed";
+    if (startDate > today) return "upcoming";
+    return "ongoing";
+  };
+
+  const ongoing = events
+    .filter((e) => categorizeEvent(e) === "ongoing")
+    .map((e) => ({
+      id: e.id,
+      title: e.event_name,
+      date: new Date(e.event_start_date).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }),
+    }));
+
+  const upcoming = events
+    .filter((e) => categorizeEvent(e) === "upcoming")
+    .map((e) => ({
+      id: e.id,
+      title: e.event_name,
+      date: new Date(e.event_start_date).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }),
+    }));
+
+  const completed = events
+    .filter((e) => categorizeEvent(e) === "completed")
+    .map((e) => ({
+      id: e.id,
+      title: e.event_name,
+      date: new Date(e.event_start_date).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      }),
+    }));
 
   const getEvents = () => {
     if (tab === "ongoing") return ongoing;
@@ -73,28 +143,34 @@ export default function Dashboard() {
       {/* Recently Added Section */}
       <div className="bg-white rounded-lg p-4">
         <p className="text-xs uppercase tracking-wider font-semibold text-gray-700 mb-4">
-          Recent
+          Recently Added
         </p>
 
-        <div className="max-h-44 overflow-y-auto">
-          {recently.map((e) => (
-            <div
-              key={e.id}
-              className="py-3 border-b border-gray-200 group last:border-b-0 flex justify-between"
-            >
-              <div className="flex-1">
-                <p className="text-sm font-medium text-gray-900">{e.title}</p>
-                <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
-                  <Calendar size={12} /> {e.date}
+        <div className="max-h-52 overflow-y-auto">
+          {recently.length > 0 ? (
+            recently.map((e) => (
+              <div
+                key={e.id}
+                className="py-3 border-b border-gray-200 group last:border-b-0 flex justify-between"
+              >
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-900">{e.title}</p>
+                  <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
+                    <Calendar size={12} /> {e.date}
+                  </div>
                 </div>
+                <Eye
+                  size={18}
+                  className="opacity-0 group-hover:opacity-100 transition cursor-pointer text-gray-400"
+                  onClick={() => navigate(`/dashboard/events/${e.id}`)}
+                />
               </div>
-              <Eye
-                size={18}
-                className="opacity-0 group-hover:opacity-100 transition cursor-pointer text-gray-400"
-                onClick={() => navigate(`/dashboard/events/${e.id}`)}
-              />
+            ))
+          ) : (
+            <div className="py-8 text-center text-gray-500">
+              <p className="text-sm">No recently added events</p>
             </div>
-          ))}
+          )}
         </div>
       </div>
 
@@ -117,9 +193,8 @@ export default function Dashboard() {
         </div>
 
         <div className="mt-4 max-h-[260px] overflow-y-auto">
-          {getEvents()
-            .slice(0, 4)
-            .map((e) => (
+          {getEvents().length > 0 ? (
+            getEvents().map((e) => (
               <div
                 key={e.id}
                 className="py-3 flex justify-between border-b border-gray-200 group last:border-b-0"
@@ -128,7 +203,6 @@ export default function Dashboard() {
                   <p className="text-sm font-medium text-gray-900">{e.title}</p>
                   <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
                     <Calendar size={12} /> {e.date}
-                    <span className="text-teal-600 font-medium">ongoing</span>
                   </div>
                 </div>
                 <Eye
@@ -137,7 +211,12 @@ export default function Dashboard() {
                   onClick={() => navigate(`/dashboard/events/${e.id}`)}
                 />
               </div>
-            ))}
+            ))
+          ) : (
+            <div className="py-8 text-center text-gray-500">
+              <p className="text-sm">No {tab} events</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -216,19 +295,37 @@ export default function Dashboard() {
                   type="button"
                   onClick={() => setShowAddModal(false)}
                   className="px-4 py-2 bg-gray-200 rounded text-sm font-medium hover:bg-gray-300"
+                  disabled={navigation.state === "submitting"}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-teal-700 text-white rounded text-sm font-medium hover:bg-teal-800"
+                  disabled={navigation.state === "submitting"}
+                  className="px-4 py-2 bg-teal-700 text-white rounded text-sm font-medium hover:bg-teal-800 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Add Event
+                  {navigation.state === "submitting" ? (
+                    <>
+                      <Loader size="sm" />
+                      Adding...
+                    </>
+                  ) : (
+                    "Add Event"
+                  )}
                 </button>
               </div>
             </Form>
           </div>
         </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
       )}
     </div>
   );

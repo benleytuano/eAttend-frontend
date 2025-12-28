@@ -1,17 +1,76 @@
-import { useState } from "react";
-import { useNavigate, useParams } from "react-router";
-import { Calendar, X, Download } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  Form,
+  useActionData,
+  useLoaderData,
+  useNavigate,
+  useNavigation,
+  useParams,
+  useSubmit,
+} from "react-router";
+import { Calendar, X, Download, QrCode, Pencil, Trash2 } from "lucide-react";
+import { Toast } from "../../components/Toast";
+import { Loader } from "../../components/Loader";
 
 export default function EventDetails() {
   const navigate = useNavigate();
   const { eventId } = useParams();
+  const submit = useSubmit();
+  const navigation = useNavigation();
   const [eventTab, setEventTab] = useState("attendees");
   const [selectedDate, setSelectedDate] = useState("Mar 15");
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [toast, setToast] = useState<{
+    message: string;
+    type: "success" | "error";
+  } | null>(null);
 
-  // Dummy event data (you would fetch this based on eventId)
+  const actionData = useActionData() as
+    | { success?: boolean; error?: string; message?: string }
+    | undefined;
+
+  const loaderData = useLoaderData() as {
+    data: {
+      id: number;
+      event_name: string;
+      event_start_date: string;
+      event_end_date: string;
+      created_at: string;
+    };
+  };
+
+  const event = loaderData?.data;
+
+  // Handle action data (success/error)
+  useEffect(() => {
+    if (actionData?.success) {
+      setShowEditModal(false);
+      setToast({
+        message: actionData.message || "Event updated successfully!",
+        type: "success",
+      });
+    } else if (actionData?.error) {
+      setToast({
+        message: actionData.error,
+        type: "error",
+      });
+    }
+  }, [actionData]);
+
   const selectedEvent = {
-    title: "Annual Tech Conference 2024",
-    date: "Mar 15, 2024",
+    title: event?.event_name || "Event",
+    date: event?.event_start_date
+      ? `${new Date(event.event_start_date).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })} - ${new Date(event.event_end_date).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })}`
+      : "N/A",
   };
 
   const attendeesData = [
@@ -73,15 +132,33 @@ export default function EventDetails() {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex gap-2 mt-6 flex-wrap">
-          <button className="border border-gray-400 px-4 py-2 rounded text-sm hover:bg-white transition font-medium">
-            Generate QR
+        <div className="flex gap-2 mt-6">
+          <button
+            onClick={() => alert("QR Code generation coming soon!")}
+            className="border border-gray-400 p-2 rounded hover:bg-white transition text-gray-700 hover:text-gray-900 relative group"
+          >
+            <QrCode size={20} />
+            <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap pointer-events-none">
+              Generate QR Code
+            </span>
           </button>
-          <button className="border border-gray-400 px-4 py-2 rounded text-sm hover:bg-white transition font-medium">
-            Edit
+          <button
+            onClick={() => setShowEditModal(true)}
+            className="border border-gray-400 p-2 rounded hover:bg-white transition text-gray-700 hover:text-gray-900 relative group"
+          >
+            <Pencil size={20} />
+            <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap pointer-events-none">
+              Edit Event
+            </span>
           </button>
-          <button className="border border-gray-400 px-4 py-2 rounded text-sm hover:bg-white transition font-medium">
-            Delete
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            className="border border-gray-400 p-2 rounded hover:bg-white transition text-red-600 hover:text-red-700 relative group"
+          >
+            <Trash2 size={20} />
+            <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition whitespace-nowrap pointer-events-none">
+              Delete Event
+            </span>
           </button>
         </div>
 
@@ -231,6 +308,154 @@ export default function EventDetails() {
             </table>
           </div>
         </div>
+      )}
+
+      {/* EDIT EVENT MODAL */}
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-xl w-96">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold">Edit Event</h2>
+              <button
+                onClick={() => setShowEditModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <Form method="post" className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Event Name
+                </label>
+                <input
+                  name="event_name"
+                  defaultValue={event?.event_name}
+                  className="w-full border border-gray-300 p-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-teal-600"
+                  placeholder="Enter event name"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Start Date
+                </label>
+                <input
+                  name="event_start_date"
+                  type="date"
+                  defaultValue={
+                    event?.event_start_date
+                      ? new Date(event.event_start_date)
+                          .toISOString()
+                          .split("T")[0]
+                      : ""
+                  }
+                  className="w-full border border-gray-300 p-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-teal-600"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  End Date
+                </label>
+                <input
+                  name="event_end_date"
+                  type="date"
+                  defaultValue={
+                    event?.event_end_date
+                      ? new Date(event.event_end_date)
+                          .toISOString()
+                          .split("T")[0]
+                      : ""
+                  }
+                  className="w-full border border-gray-300 p-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-teal-600"
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="px-4 py-2 bg-gray-200 rounded text-sm font-medium hover:bg-gray-300"
+                  disabled={navigation.state === "submitting"}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={navigation.state === "submitting"}
+                  className="px-4 py-2 bg-teal-700 text-white rounded text-sm font-medium hover:bg-teal-800 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {navigation.state === "submitting" ? (
+                    <>
+                      <Loader size="sm" />
+                      Updating...
+                    </>
+                  ) : (
+                    "Update Event"
+                  )}
+                </button>
+              </div>
+            </Form>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE CONFIRMATION MODAL */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-xl w-96">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold text-red-600">
+                Delete Event
+              </h2>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <p className="text-sm text-gray-700 mb-6">
+              Are you sure you want to delete "{event?.event_name}"? This action
+              cannot be undone.
+            </p>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2 bg-gray-200 rounded text-sm font-medium hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  submit(null, {
+                    method: "post",
+                    action: `/dashboard/events/${eventId}/delete`,
+                  });
+                }}
+                className="px-4 py-2 bg-red-600 text-white rounded text-sm font-medium hover:bg-red-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
       )}
     </div>
   );
