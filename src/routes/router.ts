@@ -15,6 +15,7 @@ import { uploadAttendeesAction } from "../pages/Dashboard/Actions/uploadAttendee
 import Login from "../pages/Login/Login";
 import loginPostAction from "../pages/Login/Actions/postAction";
 import Register from "../pages/Register/Register";
+import CheckInPage from "../pages/Attendance/CheckInPage";
 
 export const router = createBrowserRouter([
   {
@@ -25,6 +26,10 @@ export const router = createBrowserRouter([
   {
     path: "/register",
     Component: Register,
+  },
+  {
+    path: "/attendance/scan",
+    Component: CheckInPage,
   },
   {
     id: "root",

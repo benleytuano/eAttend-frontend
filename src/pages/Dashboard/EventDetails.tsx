@@ -8,9 +8,11 @@ import {
   useParams,
   useSubmit,
 } from "react-router";
-import { Calendar, X, Download, QrCode, Pencil, Trash2, Upload } from "lucide-react";
+import { Calendar, X, Download, QrCode, Pencil, Trash2, Upload, Copy, Check } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { Toast } from "../../components/Toast";
 import { Loader } from "../../components/Loader";
+import axiosInstance from "../../services/api";
 
 export default function EventDetails() {
   const navigate = useNavigate();
@@ -22,8 +24,23 @@ export default function EventDetails() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [qrData, setQrData] = useState<{
+    token: string;
+    url: string;
+    expiresAt: string;
+    event?: {
+      id: number;
+      event_id: string;
+      event_name: string;
+      event_start_date: string;
+      event_end_date: string;
+    };
+  } | null>(null);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [toast, setToast] = useState<{
     message: string;
     type: "success" | "error";
@@ -123,6 +140,86 @@ export default function EventDetails() {
     },
   ];
 
+  // Generate QR Code
+  const handleGenerateQR = async () => {
+    setQrLoading(true);
+    try {
+      const response = await axiosInstance.post(
+        `/events/${eventId}/generate-qr`
+      );
+      // API returns { success, message, data: { token, url, expiresAt, event } }
+      setQrData(response.data.data);
+      setShowQRModal(true);
+    } catch (error: any) {
+      const errorCode = error.response?.data?.error;
+      let errorMessage = error.response?.data?.message || "Failed to generate QR code";
+
+      // Handle specific error cases
+      switch (errorCode) {
+        case "EVENT_ENDED":
+          errorMessage = "Cannot generate QR code. This event has already ended.";
+          break;
+        case "FORBIDDEN":
+          errorMessage = "Access denied. You don't have permission to generate QR code for this event.";
+          break;
+        case "NOT_FOUND":
+          errorMessage = "Event not found.";
+          break;
+        case "UNAUTHORIZED":
+          errorMessage = "Please log in to generate QR code.";
+          break;
+      }
+
+      setToast({
+        message: errorMessage,
+        type: "error",
+      });
+    } finally {
+      setQrLoading(false);
+    }
+  };
+
+  // Copy URL to clipboard
+  const handleCopyURL = async () => {
+    if (qrData?.url) {
+      try {
+        await navigator.clipboard.writeText(qrData.url);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } catch (error) {
+        setToast({
+          message: "Failed to copy to clipboard",
+          type: "error",
+        });
+      }
+    }
+  };
+
+  // Download QR Code
+  const handleDownloadQR = () => {
+    const svg = document.getElementById("qr-code-svg");
+    if (!svg) return;
+
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    const img = new Image();
+
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx?.drawImage(img, 0, 0);
+      const pngFile = canvas.toDataURL("image/png");
+
+      const downloadLink = document.createElement("a");
+      downloadLink.download = `event-${eventId}-qr-code.png`;
+      downloadLink.href = pngFile;
+      downloadLink.click();
+    };
+
+    img.src = "data:image/svg+xml;base64," + btoa(svgData);
+  };
+
   return (
     <div className="space-y-6">
       {/* Event Header */}
@@ -138,11 +235,12 @@ export default function EventDetails() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => alert("QR Code generation coming soon!")}
-            className="inline-flex items-center justify-center w-8 h-8 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors"
+            onClick={handleGenerateQR}
+            disabled={qrLoading}
+            className="inline-flex items-center justify-center w-8 h-8 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             title="Generate QR Code"
           >
-            <QrCode size={16} />
+            {qrLoading ? <Loader size="sm" /> : <QrCode size={16} />}
           </button>
           <button
             onClick={() => setShowEditModal(true)}
@@ -622,6 +720,98 @@ export default function EventDetails() {
                 </button>
               </div>
             </Form>
+          </div>
+        </div>
+      )}
+
+      {/* QR CODE MODAL */}
+      {showQRModal && qrData && (
+        <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50 p-4">
+          <div className="bg-white p-6 rounded-lg shadow-xl w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold">Event QR Code</h2>
+              <button
+                onClick={() => {
+                  setShowQRModal(false);
+                  setCopied(false);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* QR Code Display */}
+            <div className="flex flex-col items-center space-y-4">
+              <div className="bg-white p-4 border-2 border-gray-200 rounded-lg">
+                <QRCodeSVG
+                  id="qr-code-svg"
+                  value={qrData.url}
+                  size={256}
+                  level="H"
+                  includeMargin={true}
+                />
+              </div>
+
+              {/* Event Info */}
+              <div className="text-center">
+                <p className="text-sm font-medium text-gray-900">
+                  {selectedEvent.title}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Valid until: {new Date(qrData.expiresAt).toLocaleString()}
+                </p>
+              </div>
+
+              {/* URL Display with Copy */}
+              <div className="w-full">
+                <label className="block text-xs font-medium text-gray-700 mb-2">
+                  Attendance URL
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={qrData.url}
+                    readOnly
+                    className="flex-1 px-3 py-2 text-xs border border-gray-300 rounded bg-gray-50 text-gray-600 font-mono"
+                  />
+                  <button
+                    onClick={handleCopyURL}
+                    className="inline-flex items-center justify-center px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                    title="Copy URL"
+                  >
+                    {copied ? (
+                      <Check size={16} className="text-green-600" />
+                    ) : (
+                      <Copy size={16} className="text-gray-600" />
+                    )}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Share this URL or scan the QR code to mark attendance
+                </p>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 w-full pt-2">
+                <button
+                  onClick={handleDownloadQR}
+                  className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2 bg-gray-900 text-white rounded text-sm font-medium hover:bg-gray-800 transition-colors"
+                >
+                  <Download size={16} />
+                  Download QR
+                </button>
+                <button
+                  onClick={() => {
+                    setShowQRModal(false);
+                    setCopied(false);
+                  }}
+                  className="flex-1 px-4 py-2 bg-gray-200 rounded text-sm font-medium hover:bg-gray-300 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
