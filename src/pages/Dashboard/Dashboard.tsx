@@ -46,6 +46,30 @@ export default function Dashboard() {
   // Get events from loader data
   const events = loaderData?.data?.events || [];
 
+  // Helper function to format event date
+  const formatEventDate = (event: any) => {
+    const startDate = new Date(event.event_start_date);
+    const endDate = new Date(event.event_end_date);
+    const isMultiDay = startDate.toDateString() !== endDate.toDateString();
+
+    const startStr = startDate.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+
+    if (isMultiDay) {
+      const endStr = endDate.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+      return `${startStr} - ${endStr}`;
+    }
+
+    return startStr;
+  };
+
   // Get recently added events (latest 6)
   const recently = events
     .slice()
@@ -57,11 +81,7 @@ export default function Dashboard() {
     .map((e) => ({
       id: e.id,
       title: e.event_name,
-      date: new Date(e.event_start_date).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      }),
+      date: formatEventDate(e),
     }));
 
   // Filter events by status based on dates
@@ -84,11 +104,7 @@ export default function Dashboard() {
     .map((e) => ({
       id: e.id,
       title: e.event_name,
-      date: new Date(e.event_start_date).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      }),
+      date: formatEventDate(e),
     }));
 
   const upcoming = events
@@ -96,11 +112,7 @@ export default function Dashboard() {
     .map((e) => ({
       id: e.id,
       title: e.event_name,
-      date: new Date(e.event_start_date).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      }),
+      date: formatEventDate(e),
     }));
 
   const completed = events
@@ -108,11 +120,7 @@ export default function Dashboard() {
     .map((e) => ({
       id: e.id,
       title: e.event_name,
-      date: new Date(e.event_start_date).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      }),
+      date: formatEventDate(e),
     }));
 
   const getEvents = () => {

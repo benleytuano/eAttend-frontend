@@ -17,6 +17,24 @@ export default function RootLayout() {
 
   const isActive = (path: string) => location.pathname === path;
 
+  const handleLogout = () => {
+    sessionStorage.removeItem("authToken");
+    sessionStorage.removeItem("userData");
+    navigate("/");
+  };
+
+  // Get user data from sessionStorage
+  const userDataString = sessionStorage.getItem("userData");
+  const user = userDataString ? JSON.parse(userDataString) : {};
+  const userName = user.username || "User";
+  const userRole = user.role?.role_name || "User";
+  const userInitials = userName
+    .split(" ")
+    .map((n: string) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+
   return (
     <div className="h-screen w-full flex overflow-x-hidden bg-gray-50">
       {/* SIDEBAR */}
@@ -62,13 +80,13 @@ export default function RootLayout() {
             <Calendar size={18} /> {!collapsed && "All Events"}
           </button>
 
-          <button className="flex items-center gap-3 p-2 rounded w-full text-gray-600 hover:bg-gray-100">
+          {/* <button className="flex items-center gap-3 p-2 rounded w-full text-gray-600 hover:bg-gray-100">
             <Users size={18} /> {!collapsed && "Attendees"}
           </button>
 
           <button className="flex items-center gap-3 p-2 rounded w-full text-gray-600 hover:bg-gray-100">
             <BarChart3 size={18} /> {!collapsed && "Analytics"}
-          </button>
+          </button> */}
 
           <button className="flex items-center gap-3 p-2 rounded w-full text-gray-600 hover:bg-gray-100">
             <Settings size={18} /> {!collapsed && "Settings"}
@@ -89,19 +107,19 @@ export default function RootLayout() {
           </div>
 
           <div className="relative">
-            <img
-              src="https://i.pravatar.cc/80"
-              alt="Profile"
-              className="h-10 w-10 rounded-full cursor-pointer"
+            <div
+              className="h-10 w-10 rounded-full cursor-pointer bg-teal-600 text-white flex items-center justify-center font-semibold text-sm"
               onClick={() => setShowProfileMenu(!showProfileMenu)}
-            />
+            >
+              {userInitials}
+            </div>
 
             {showProfileMenu && (
               <div className="absolute right-0 mt-2 w-48 bg-white border shadow-lg rounded-lg p-3 z-50">
-                <p className="font-medium">James G.</p>
-                <p className="text-xs text-gray-500 mb-3">Admin</p>
+                <p className="font-medium">{userName}</p>
+                <p className="text-xs text-gray-500 mb-3">{userRole}</p>
                 <button
-                  onClick={() => navigate("/")}
+                  onClick={handleLogout}
                   className="w-full p-2 text-left hover:bg-gray-100 rounded text-sm"
                 >
                   Logout

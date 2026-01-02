@@ -47,6 +47,7 @@ export const router = createBrowserRouter([
         path: "all-events",
         Component: AllEvents,
         loader: allEventsLoader,
+        action: addEventAction,
       },
       {
         path: "events/:eventId",

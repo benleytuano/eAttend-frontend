@@ -10,9 +10,30 @@ import {
 } from "react-router";
 import { Calendar, X, Download, QrCode, Pencil, Trash2, Upload, Copy, Check } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import * as XLSX from "xlsx";
 import { Toast } from "../../components/Toast";
 import { Loader } from "../../components/Loader";
 import axiosInstance from "../../services/api";
+
+// Helper function to format time to 12-hour format with AM/PM
+const formatTimeToAMPM = (timeString: string): string => {
+  // Extract time portion from datetime string (e.g., "2024-01-01T14:30:00" -> "14:30:00")
+  const timePart = timeString.includes('T') ? timeString.split('T')[1] : timeString;
+
+  // Extract hours and minutes
+  const [hoursStr, minutesStr] = timePart.split(':');
+  let hours = parseInt(hoursStr, 10);
+  const minutes = minutesStr;
+
+  // Determine AM/PM
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+
+  // Convert to 12-hour format
+  hours = hours % 12;
+  hours = hours ? hours : 12; // 0 should be 12
+
+  return `${hours}:${minutes} ${ampm}`;
+};
 
 export default function EventDetails() {
   const navigate = useNavigate();
@@ -20,13 +41,15 @@ export default function EventDetails() {
   const submit = useSubmit();
   const navigation = useNavigation();
   const [eventTab, setEventTab] = useState("attendees");
-  const [selectedDate, setSelectedDate] = useState("Mar 15");
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [attendeesSearchQuery, setAttendeesSearchQuery] = useState("");
+  const [attendanceSearchQuery, setAttendanceSearchQuery] = useState("");
+  const [attendanceCurrentPage, setAttendanceCurrentPage] = useState(1);
   const [qrData, setQrData] = useState<{
     token: string;
     url: string;
@@ -41,6 +64,30 @@ export default function EventDetails() {
   } | null>(null);
   const [qrLoading, setQrLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [attendanceData, setAttendanceData] = useState<{
+    records: Array<{
+      id: number;
+      attendance_date: string;
+      check_in_time: string;
+      status: string;
+      attendee: {
+        id: number;
+        employee_id: string;
+        name: string;
+        section: string;
+        position: string;
+        employment_status: string;
+      };
+    }>;
+    summary: {
+      total_attendees: number;
+      unique_checked_in: number;
+      total_check_ins: number;
+      attendance_rate: string;
+    };
+  } | null>(null);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [selectedAttendanceDate, setSelectedAttendanceDate] = useState<string | null>(null);
   const [toast, setToast] = useState<{
     message: string;
     type: "success" | "error";
@@ -83,16 +130,33 @@ export default function EventDetails() {
   const attendeesData = loaderData?.attendees?.data?.attendees || [];
   const attendeesCount = loaderData?.attendees?.data?.count || 0;
 
-  // Pagination logic
-  const totalPages = Math.ceil(attendeesData.length / itemsPerPage);
+  // Filter attendees by search query
+  const filteredAttendees = attendeesData.filter((attendee) => {
+    const query = attendeesSearchQuery.toLowerCase();
+    return (
+      attendee.employee_id.toLowerCase().includes(query) ||
+      attendee.name.toLowerCase().includes(query) ||
+      attendee.section.toLowerCase().includes(query) ||
+      attendee.position.toLowerCase().includes(query) ||
+      attendee.employment_status.toLowerCase().includes(query)
+    );
+  });
+
+  // Pagination logic for attendees
+  const totalPages = Math.ceil(filteredAttendees.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
-  const currentAttendees = attendeesData.slice(startIndex, endIndex);
+  const currentAttendees = filteredAttendees.slice(startIndex, endIndex);
 
-  // Reset to page 1 when attendees data changes
+  // Reset to page 1 when attendees data or search query changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [attendeesData.length]);
+  }, [attendeesData.length, attendeesSearchQuery]);
+
+  // Reset to page 1 when attendance search query changes
+  useEffect(() => {
+    setAttendanceCurrentPage(1);
+  }, [attendanceSearchQuery]);
 
   // Handle action data (success/error)
   useEffect(() => {
@@ -112,33 +176,44 @@ export default function EventDetails() {
     }
   }, [actionData]);
 
+  // Check if event is multi-day
+  const isMultiDayEvent = event?.event_start_date && event?.event_end_date
+    ? new Date(event.event_start_date).toDateString() !== new Date(event.event_end_date).toDateString()
+    : false;
+
   const selectedEvent = {
     title: event?.event_name || "Event",
     date: event?.event_start_date
-      ? `${new Date(event.event_start_date).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        })} - ${new Date(event.event_end_date).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        })}`
+      ? isMultiDayEvent
+        ? `${new Date(event.event_start_date).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })} - ${new Date(event.event_end_date).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })}`
+        : new Date(event.event_start_date).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })
       : "N/A",
   };
 
-  const attendanceDates = ["Mar 15", "Mar 16", "Mar 17", "Mar 18"];
+  // Generate attendance dates for multi-day events
+  const attendanceDates: string[] = [];
+  if (isMultiDayEvent && event?.event_start_date && event?.event_end_date) {
+    const start = new Date(event.event_start_date);
+    const end = new Date(event.event_end_date);
+    const current = new Date(start);
 
-  const attendanceData = [
-    {
-      id: "03-001",
-      name: "Santos Juan M",
-      section: "Human Resource Welfare Section",
-      position: "Administrative Officer II",
-      status: "Permanent",
-      attendance: "Present",
-    },
-  ];
+    while (current <= end) {
+      attendanceDates.push(current.toISOString().split('T')[0]);
+      current.setDate(current.getDate() + 1);
+    }
+  }
 
   // Generate QR Code
   const handleGenerateQR = async () => {
@@ -220,6 +295,109 @@ export default function EventDetails() {
     img.src = "data:image/svg+xml;base64," + btoa(svgData);
   };
 
+  // Fetch attendance records
+  const fetchAttendanceRecords = async () => {
+    if (!eventId) return;
+
+    setAttendanceLoading(true);
+    try {
+      const response = await axiosInstance.get(`/events/${eventId}/attendance`);
+      setAttendanceData(response.data.data);
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.message || "Failed to load attendance records";
+      setToast({
+        message: errorMessage,
+        type: "error",
+      });
+    } finally {
+      setAttendanceLoading(false);
+    }
+  };
+
+  // Fetch attendance data when attendance tab is active
+  useEffect(() => {
+    if (eventTab === "attendance") {
+      fetchAttendanceRecords();
+    }
+  }, [eventTab]);
+
+  // Export attendance to Excel
+  const handleDownloadAttendanceReport = () => {
+    if (!attendanceData || !event) return;
+
+    // Create workbook
+    const workbook = XLSX.utils.book_new();
+
+    if (isMultiDayEvent) {
+      // For multi-day events: Create separate sheet for each day
+      attendanceDates.forEach((dateStr) => {
+        // Filter records for this specific date
+        const dayRecords = attendanceData.records.filter((record) => {
+          const recordDate = record.attendance_date.split('T')[0];
+          return recordDate === dateStr;
+        });
+
+        // Prepare data for this day
+        const excelData = dayRecords.map((record) => ({
+          "Employee ID": record.attendee.employee_id,
+          "Name": record.attendee.name,
+          "Section": record.attendee.section,
+          "Position": record.attendee.position,
+          "Employment Status": record.attendee.employment_status,
+          "Check-in Time": formatTimeToAMPM(record.check_in_time),
+          "Status": record.status,
+        }));
+
+        // Create worksheet for this day
+        const worksheet = XLSX.utils.json_to_sheet(excelData);
+
+        // Format sheet name as "Dec 30" or "Jan 1"
+        const sheetName = new Date(dateStr).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+        });
+
+        XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+      });
+    } else {
+      // For single-day events: One sheet with all records (no date column)
+      const excelData = attendanceData.records.map((record) => ({
+        "Employee ID": record.attendee.employee_id,
+        "Name": record.attendee.name,
+        "Section": record.attendee.section,
+        "Position": record.attendee.position,
+        "Employment Status": record.attendee.employment_status,
+        "Check-in Time": formatTimeToAMPM(record.check_in_time),
+        "Status": record.status,
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Attendance Records");
+    }
+
+    // Add summary sheet
+    const summaryData = [
+      { Metric: "Total Attendees", Value: attendanceData.summary.total_attendees },
+      { Metric: "Unique Checked In", Value: attendanceData.summary.unique_checked_in },
+      { Metric: "Total Check-ins", Value: attendanceData.summary.total_check_ins },
+      { Metric: "Attendance Rate", Value: attendanceData.summary.attendance_rate },
+    ];
+    const summarySheet = XLSX.utils.json_to_sheet(summaryData);
+    XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary");
+
+    // Generate filename
+    const eventName = event.event_name.replace(/[^a-z0-9]/gi, "-");
+    const startDate = new Date(event.event_start_date).toISOString().split("T")[0];
+    const endDate = new Date(event.event_end_date).toISOString().split("T")[0];
+
+    const filename = isMultiDayEvent
+      ? `${eventName}-Attendance-Report-${startDate}-to-${endDate}.xlsx`
+      : `${eventName}-Attendance-Report-${startDate}.xlsx`;
+
+    // Download file
+    XLSX.writeFile(workbook, filename, { bookType: "xlsx", type: "binary" });
+  };
+
   return (
     <div className="space-y-6">
       {/* Event Header */}
@@ -270,7 +448,13 @@ export default function EventDetails() {
         {["attendees", "attendance"].map((t) => (
           <button
             key={t}
-            onClick={() => setEventTab(t)}
+            onClick={() => {
+              setEventTab(t);
+              // Refetch attendance data when clicking the attendance tab
+              if (t === "attendance") {
+                fetchAttendanceRecords();
+              }
+            }}
             className={`pb-2 text-xs font-medium transition-colors ${
               eventTab === t
                 ? "border-b-2 border-gray-900 text-gray-900"
@@ -288,7 +472,7 @@ export default function EventDetails() {
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="text-xs text-gray-500">
-              {attendeesCount} {attendeesCount === 1 ? "person" : "people"}
+              {filteredAttendees.length} of {attendeesCount} {attendeesCount === 1 ? "person" : "people"}
             </div>
             <button
               onClick={() => setShowUploadModal(true)}
@@ -298,6 +482,17 @@ export default function EventDetails() {
               <span className="hidden sm:inline">Upload CSV/Excel</span>
               <span className="sm:hidden">Upload</span>
             </button>
+          </div>
+
+          {/* Search */}
+          <div>
+            <input
+              type="text"
+              placeholder="Search by employee ID, name, section, position, or status..."
+              value={attendeesSearchQuery}
+              onChange={(e) => setAttendeesSearchQuery(e.target.value)}
+              className="w-full px-3 py-2 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-600"
+            />
           </div>
 
           {/* Table */}
@@ -376,7 +571,7 @@ export default function EventDetails() {
             {totalPages > 1 && (
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-3 py-2.5 bg-gray-50/50 border-t border-gray-200">
                 <div className="text-xs text-gray-600">
-                  Showing {startIndex + 1} to {Math.min(endIndex, attendeesCount)} of {attendeesCount}
+                  Showing {startIndex + 1} to {Math.min(endIndex, filteredAttendees.length)} of {filteredAttendees.length}
                 </div>
                 <div className="flex items-center gap-1">
                   <button
@@ -417,90 +612,274 @@ export default function EventDetails() {
       )}
 
       {/* ATTENDANCE TAB */}
-      {eventTab === "attendance" && (
-        <div className="space-y-4">
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div className="flex gap-1.5 flex-wrap">
-              {attendanceDates.map((date) => (
-                <button
-                  key={date}
-                  onClick={() => setSelectedDate(date)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                    selectedDate === date
-                      ? "bg-gray-900 text-white"
-                      : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                  }`}
-                >
-                  {date}
-                </button>
-              ))}
-            </div>
-            <button className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gray-900 rounded-md hover:bg-gray-800 transition-colors w-full sm:w-auto">
-              <Download size={14} />
-              <span className="hidden sm:inline">Download Report</span>
-              <span className="sm:hidden">Download</span>
-            </button>
-          </div>
+      {eventTab === "attendance" && (() => {
+        // Filter attendance records by search query and selected date
+        const filteredAttendanceRecords = (attendanceData?.records || [])
+          .filter((record) => {
+            // Filter by selected date
+            if (selectedAttendanceDate) {
+              const recordDate = record.attendance_date.split('T')[0];
+              if (recordDate !== selectedAttendanceDate) return false;
+            }
 
-          {/* Attendance Table */}
-          <div className="border border-gray-200 rounded-lg overflow-hidden">
-            <div className="overflow-x-auto -mx-4 sm:mx-0">
-              <div className="inline-block min-w-full align-middle">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead>
-                    <tr className="bg-gray-50/50">
-                      <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap">
-                        Employee ID
-                      </th>
-                      <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap">
-                        Name
-                      </th>
-                      <th className="hidden md:table-cell px-3 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap">
-                        Section
-                      </th>
-                      <th className="hidden lg:table-cell px-3 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap">
-                        Position
-                      </th>
-                      <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap">
-                        Status
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-100">
-                    {attendanceData.map((attendee, idx) => (
-                      <tr
-                        key={idx}
-                        className={`hover:bg-gray-50/50 transition-colors ${
-                          idx % 2 === 0 ? "" : "bg-gray-50/30"
+            // Filter by search query
+            if (attendanceSearchQuery) {
+              const query = attendanceSearchQuery.toLowerCase();
+              return (
+                record.attendee.employee_id.toLowerCase().includes(query) ||
+                record.attendee.name.toLowerCase().includes(query) ||
+                record.attendee.section.toLowerCase().includes(query) ||
+                record.attendee.position.toLowerCase().includes(query) ||
+                record.attendee.employment_status.toLowerCase().includes(query) ||
+                record.status.toLowerCase().includes(query)
+              );
+            }
+
+            return true;
+          });
+
+        // Pagination for attendance
+        const attendanceTotalPages = Math.ceil(filteredAttendanceRecords.length / itemsPerPage);
+        const attendanceStartIndex = (attendanceCurrentPage - 1) * itemsPerPage;
+        const attendanceEndIndex = attendanceStartIndex + itemsPerPage;
+        const currentAttendanceRecords = filteredAttendanceRecords.slice(attendanceStartIndex, attendanceEndIndex);
+
+        return (
+        <div className="space-y-4">
+          {attendanceLoading ? (
+            <div className="flex justify-center items-center py-12">
+              <Loader />
+            </div>
+          ) : (
+            <>
+              {/* Summary Statistics */}
+              {attendanceData?.summary && (
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                    <p className="text-xs text-gray-600 mb-1">Total Attendees</p>
+                    <p className="text-lg font-semibold text-gray-900">
+                      {attendanceData.summary.total_attendees}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                    <p className="text-xs text-gray-600 mb-1">Checked In</p>
+                    <p className="text-lg font-semibold text-gray-900">
+                      {attendanceData.summary.unique_checked_in}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                    <p className="text-xs text-gray-600 mb-1">Total Check-ins</p>
+                    <p className="text-lg font-semibold text-gray-900">
+                      {attendanceData.summary.total_check_ins}
+                    </p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                    <p className="text-xs text-gray-600 mb-1">Attendance Rate</p>
+                    <p className="text-lg font-semibold text-teal-600">
+                      {attendanceData.summary.attendance_rate}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Search */}
+              <div>
+                <input
+                  type="text"
+                  placeholder="Search by employee ID, name, section, position, or status..."
+                  value={attendanceSearchQuery}
+                  onChange={(e) => setAttendanceSearchQuery(e.target.value)}
+                  className="w-full px-3 py-2 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-600"
+                />
+              </div>
+
+              {/* Header with Date Filter (for multi-day events) and Download */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex gap-1.5 flex-wrap">
+                  {isMultiDayEvent && attendanceDates.length > 0 && (
+                    <>
+                      <button
+                        onClick={() => setSelectedAttendanceDate(null)}
+                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                          selectedAttendanceDate === null
+                            ? "bg-gray-900 text-white"
+                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                         }`}
                       >
-                        <td className="px-3 py-2.5 text-xs text-gray-900 font-medium whitespace-nowrap">
-                          {attendee.id}
-                        </td>
-                        <td className="px-3 py-2.5 text-xs text-gray-900 max-w-[150px] sm:max-w-none truncate sm:whitespace-normal">
-                          {attendee.name}
-                        </td>
-                        <td className="hidden md:table-cell px-3 py-2.5 text-xs text-gray-600 max-w-[200px] truncate">
-                          {attendee.section}
-                        </td>
-                        <td className="hidden lg:table-cell px-3 py-2.5 text-xs text-gray-600 max-w-[180px] truncate">
-                          {attendee.position}
-                        </td>
-                        <td className="px-3 py-2.5 text-xs">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-gray-700 whitespace-nowrap">
-                            {attendee.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        All Days
+                      </button>
+                      {attendanceDates.map((date) => (
+                        <button
+                          key={date}
+                          onClick={() => setSelectedAttendanceDate(date)}
+                          className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                            selectedAttendanceDate === date
+                              ? "bg-gray-900 text-white"
+                              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                          }`}
+                        >
+                          {new Date(date).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </button>
+                      ))}
+                    </>
+                  )}
+                </div>
+                <button
+                  onClick={handleDownloadAttendanceReport}
+                  disabled={!attendanceData || attendanceData.records.length === 0}
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-gray-900 rounded-md hover:bg-gray-800 transition-colors w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Download size={14} />
+                  <span className="hidden sm:inline">Download Report</span>
+                  <span className="sm:hidden">Download</span>
+                </button>
               </div>
-            </div>
-          </div>
+
+              {/* Attendance Table */}
+              <div className="border border-gray-200 rounded-lg overflow-hidden">
+                <div className="overflow-x-auto -mx-4 sm:mx-0">
+                  <div className="inline-block min-w-full align-middle">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead>
+                        <tr className="bg-gray-50/50">
+                          <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap">
+                            Employee ID
+                          </th>
+                          <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap">
+                            Name
+                          </th>
+                          <th className="hidden md:table-cell px-3 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap">
+                            Section
+                          </th>
+                          <th className="hidden lg:table-cell px-3 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap">
+                            Position
+                          </th>
+                          <th className="hidden xl:table-cell px-3 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap">
+                            Employment Status
+                          </th>
+                          {isMultiDayEvent && (
+                            <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap">
+                              Date
+                            </th>
+                          )}
+                          <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap">
+                            Check-in Time
+                          </th>
+                          <th className="px-3 py-2.5 text-left text-xs font-medium text-gray-600 whitespace-nowrap">
+                            Status
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-100">
+                        {currentAttendanceRecords.length > 0 ? (
+                          currentAttendanceRecords.map((record, idx) => (
+                              <tr
+                                key={record.id}
+                                className={`hover:bg-gray-50/50 transition-colors ${
+                                  idx % 2 === 0 ? "" : "bg-gray-50/30"
+                                }`}
+                              >
+                                <td className="px-3 py-2.5 text-xs text-gray-900 font-medium whitespace-nowrap">
+                                  {record.attendee.employee_id}
+                                </td>
+                                <td className="px-3 py-2.5 text-xs text-gray-900 max-w-[150px] sm:max-w-none truncate sm:whitespace-normal">
+                                  {record.attendee.name}
+                                </td>
+                                <td className="hidden md:table-cell px-3 py-2.5 text-xs text-gray-600 max-w-[200px] truncate">
+                                  {record.attendee.section}
+                                </td>
+                                <td className="hidden lg:table-cell px-3 py-2.5 text-xs text-gray-600 max-w-[180px] truncate">
+                                  {record.attendee.position}
+                                </td>
+                                <td className="hidden xl:table-cell px-3 py-2.5 text-xs">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-gray-100 text-gray-700 whitespace-nowrap">
+                                    {record.attendee.employment_status}
+                                  </span>
+                                </td>
+                                {isMultiDayEvent && (
+                                  <td className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap">
+                                    {new Date(record.attendance_date).toLocaleDateString("en-US", {
+                                      month: "short",
+                                      day: "numeric",
+                                    })}
+                                  </td>
+                                )}
+                                <td className="px-3 py-2.5 text-xs text-gray-600 whitespace-nowrap">
+                                  {formatTimeToAMPM(record.check_in_time)}
+                                </td>
+                                <td className="px-3 py-2.5 text-xs">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-green-100 text-green-700 whitespace-nowrap">
+                                    {record.status}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))
+                        ) : (
+                          <tr>
+                            <td colSpan={isMultiDayEvent ? 8 : 7} className="px-3 py-12 text-center">
+                              <div className="flex flex-col items-center gap-2">
+                                <p className="text-sm text-gray-500">No attendance records yet</p>
+                                <p className="text-xs text-gray-400">
+                                  Attendance will appear here when people check in
+                                </p>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* Pagination */}
+                {attendanceTotalPages > 1 && (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-3 py-2.5 bg-gray-50/50 border-t border-gray-200">
+                    <div className="text-xs text-gray-600">
+                      Showing {attendanceStartIndex + 1} to {Math.min(attendanceEndIndex, filteredAttendanceRecords.length)} of {filteredAttendanceRecords.length}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setAttendanceCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={attendanceCurrentPage === 1}
+                        className="px-2 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <span className="hidden sm:inline">Previous</span>
+                        <span className="sm:hidden">Prev</span>
+                      </button>
+                      <div className="flex items-center gap-0.5 mx-1">
+                        {Array.from({ length: attendanceTotalPages }, (_, i) => i + 1).map((page) => (
+                          <button
+                            key={page}
+                            onClick={() => setAttendanceCurrentPage(page)}
+                            className={`min-w-[28px] px-2 py-1 text-xs font-medium rounded transition-colors ${
+                              attendanceCurrentPage === page
+                                ? "bg-gray-900 text-white"
+                                : "text-gray-700 hover:bg-gray-100"
+                            }`}
+                          >
+                            {page}
+                          </button>
+                        ))}
+                      </div>
+                      <button
+                        onClick={() => setAttendanceCurrentPage((p) => Math.min(attendanceTotalPages, p + 1))}
+                        disabled={attendanceCurrentPage === attendanceTotalPages}
+                        className="px-2 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
-      )}
+        );
+      })()}
 
       {/* EDIT EVENT MODAL */}
       {showEditModal && (

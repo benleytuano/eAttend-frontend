@@ -1,17 +1,74 @@
-import { useState } from "react";
-import { useLoaderData, useNavigate } from "react-router";
-import { Calendar, Eye } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  Form,
+  useActionData,
+  useLoaderData,
+  useNavigate,
+  useNavigation,
+} from "react-router";
+import { Calendar, Eye, X } from "lucide-react";
+import { Toast } from "../../components/Toast";
+import { Loader } from "../../components/Loader";
 
 export default function AllEvents() {
   const navigate = useNavigate();
+  const navigation = useNavigation();
   const [tab, setTab] = useState("ongoing");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [toast, setToast] = useState<{
+    message: string;
+    type: "success" | "error";
+  } | null>(null);
+
   const loaderData = useLoaderData() as {
     data: { events: any[]; count: number };
   };
+  const actionData = useActionData() as
+    | { success?: boolean; error?: string; errors?: any[]; message?: string }
+    | undefined;
+
+  // Close modal on success and show toast
+  useEffect(() => {
+    if (actionData?.success) {
+      setShowAddModal(false);
+      setToast({
+        message: actionData.message || "Event created successfully!",
+        type: "success",
+      });
+    } else if (actionData?.error) {
+      setToast({
+        message: actionData.error,
+        type: "error",
+      });
+    }
+  }, [actionData]);
 
   // Get events from loader data
   const events = loaderData?.data?.events || [];
+
+  // Helper function to format event date
+  const formatEventDate = (event: any) => {
+    const startDate = new Date(event.event_start_date);
+    const endDate = new Date(event.event_end_date);
+    const isMultiDay = startDate.toDateString() !== endDate.toDateString();
+
+    const startStr = startDate.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+
+    if (isMultiDay) {
+      const endStr = endDate.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+      return `${startStr} - ${endStr}`;
+    }
+
+    return startStr;
+  };
 
   // Filter events by status based on dates
   const today = new Date();
@@ -33,11 +90,7 @@ export default function AllEvents() {
     .map((e) => ({
       id: e.id,
       title: e.event_name,
-      date: new Date(e.event_start_date).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      }),
+      date: formatEventDate(e),
     }));
 
   const upcoming = events
@@ -45,11 +98,7 @@ export default function AllEvents() {
     .map((e) => ({
       id: e.id,
       title: e.event_name,
-      date: new Date(e.event_start_date).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      }),
+      date: formatEventDate(e),
     }));
 
   const completed = events
@@ -57,11 +106,7 @@ export default function AllEvents() {
     .map((e) => ({
       id: e.id,
       title: e.event_name,
-      date: new Date(e.event_start_date).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      }),
+      date: formatEventDate(e),
     }));
 
   const getEvents = () => {
@@ -139,36 +184,108 @@ export default function AllEvents() {
       {showAddModal && (
         <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50">
           <div className="bg-white p-6 rounded-lg shadow-xl w-96">
-            <h2 className="text-lg font-semibold mb-4">Add Event</h2>
-
-            <div className="space-y-4">
-              <input
-                className="w-full border p-2 rounded text-sm"
-                placeholder="Event Name"
-              />
-              <input
-                type="date"
-                className="w-full border p-2 rounded text-sm"
-              />
-              <input
-                type="date"
-                className="w-full border p-2 rounded text-sm"
-              />
-            </div>
-
-            <div className="flex justify-end gap-3 mt-6">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-lg font-semibold">Add Event</h2>
               <button
                 onClick={() => setShowAddModal(false)}
-                className="px-4 py-2 bg-gray-200 rounded text-sm font-medium hover:bg-gray-300"
+                className="text-gray-400 hover:text-gray-600"
               >
-                Cancel
-              </button>
-              <button className="px-4 py-2 bg-teal-700 text-white rounded text-sm font-medium hover:bg-teal-800">
-                Add
+                <X size={20} />
               </button>
             </div>
+
+            <Form method="post" className="space-y-4">
+              {actionData?.error && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded text-sm">
+                  {actionData.error}
+                  {actionData.errors && (
+                    <ul className="mt-2 list-disc list-inside text-xs">
+                      {actionData.errors.map((err: any, idx: number) => (
+                        <li key={idx}>{err.message}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              {actionData?.success && (
+                <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded text-sm">
+                  Event created successfully!
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Event Name
+                </label>
+                <input
+                  name="event_name"
+                  className="w-full border border-gray-300 p-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-teal-600"
+                  placeholder="Enter event name"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Start Date
+                </label>
+                <input
+                  name="event_start_date"
+                  type="date"
+                  className="w-full border border-gray-300 p-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-teal-600"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  End Date
+                </label>
+                <input
+                  name="event_end_date"
+                  type="date"
+                  className="w-full border border-gray-300 p-2 rounded text-sm focus:outline-none focus:ring-2 focus:ring-teal-600"
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="px-4 py-2 bg-gray-200 rounded text-sm font-medium hover:bg-gray-300"
+                  disabled={navigation.state === "submitting"}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={navigation.state === "submitting"}
+                  className="px-4 py-2 bg-teal-700 text-white rounded text-sm font-medium hover:bg-teal-800 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {navigation.state === "submitting" ? (
+                    <>
+                      <Loader size="sm" />
+                      Adding...
+                    </>
+                  ) : (
+                    "Add Event"
+                  )}
+                </button>
+              </div>
+            </Form>
           </div>
         </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
       )}
     </div>
   );

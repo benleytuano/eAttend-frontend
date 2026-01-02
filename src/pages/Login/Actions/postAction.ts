@@ -17,8 +17,9 @@ export default async function loginPostAction({ request }: ActionFunctionArgs) {
 
     console.log(response);
 
-    const { token } = response.data;
+    const { token, user } = response.data;
     sessionStorage.setItem("authToken", token);
+    sessionStorage.setItem("userData", JSON.stringify(user));
 
     // Redirect based on user role if needed
     if (response.data.user?.role?.id !== 3) {
